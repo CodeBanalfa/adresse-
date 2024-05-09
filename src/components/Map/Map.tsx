@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { DrawingManager, Marker, GoogleMap } from "@react-google-maps/api";
-import { Card, CardContent, Typography } from "@mui/material";
+import {
+  DrawingManager,
+  Marker,
+  GoogleMap,
+  Polygon,
+} from "@react-google-maps/api";
+import { Card, CardContent, TextField, Typography, Box } from "@mui/material";
 import { Wrapper } from "@googlemaps/react-wrapper";
 
 const mapContainerStyle = {
@@ -10,42 +15,47 @@ const mapContainerStyle = {
 
 const googleMapsApiKey = "AIzaSyCYfENzzKetiOcxrv7ucMPvPMocVziUlp8"; // Remplacez par votre clé Google Maps
 
-// Fonction de rendu pour l'état de chargement de Google Maps
-const render = (status: string) => {
-  return <Typography variant="h6">{status}</Typography>;
-};
-
 const Map: React.FC = () => {
   const [googleLoaded, setGoogleLoaded] = useState<boolean>(false);
-  const [points, setPoints] = useState<google.maps.LatLngLiteral[]>([]);
-  const [totalArea, setTotalArea] = useState<number | null>(0);
+  const [polygons, setPolygons] = useState<google.maps.LatLngLiteral[][]>([]);
+  const [markers, setMarkers] = useState<google.maps.LatLngLiteral[]>([]);
+  const [totalArea, setTotalArea] = useState<number>(0);
 
-  // Utilisation de l'effet pour vérifier si Google Maps est chargé
+  // Initialisation de Google Maps
   useEffect(() => {
     if (typeof window.google !== "undefined" && window.google.maps) {
       setGoogleLoaded(true);
     }
   }, []);
 
+  // Gestion de l'événement de fin de dessin d'un polygone
+  const handlePolygonComplete = (polygon: google.maps.Polygon) => {
+    const path = polygon
+      .getPath()
+      .getArray()
+      .map((latLng) => ({
+        lat: latLng.lat(),
+        lng: latLng.lng(),
+      }));
+
+    setPolygons((prevPolygons) => [...prevPolygons, path]);
+
+    const area = window.google.maps.geometry.spherical.computeArea(
+      polygon.getPath()
+    );
+
+    setTotalArea((prevArea) => prevArea + area);
+  };
+
+  // Gestion du clic sur la carte pour ajouter des marqueurs
   const handleMapClick = (event: google.maps.MapMouseEvent) => {
-    if (googleLoaded && event.latLng) {
-      const newPoint = {
+    if (event.latLng) {
+      const newMarker = {
         lat: event.latLng.lat(),
         lng: event.latLng.lng(),
       };
-      setPoints([...points, newPoint]);
+      setMarkers((prevMarkers) => [...prevMarkers, newMarker]);
     }
-  };
-
-  const calculateArea = (polygonPath: google.maps.LatLngLiteral[]) => {
-    if (googleLoaded && window.google?.maps?.geometry) {
-      return window.google.maps.geometry.spherical.computeArea(
-        polygonPath.map(
-          (point) => new window.google.maps.LatLng(point.lat, point.lng)
-        )
-      );
-    }
-    return null;
   };
 
   return (
@@ -57,7 +67,7 @@ const Map: React.FC = () => {
 
         <Wrapper
           apiKey={googleMapsApiKey}
-          render={render}
+          render={(status) => <Typography variant="body2">{status}</Typography>}
           libraries={["drawing", "geometry"]}
         >
           <GoogleMap
@@ -66,37 +76,41 @@ const Map: React.FC = () => {
             zoom={12}
             onClick={handleMapClick}
           >
-            {googleLoaded &&
-              points.map((point, index) => (
-                <Marker key={index} position={point} />
-              ))}
+            {/* Ajout des marqueurs */}
+            {markers.map((marker, index) => (
+              <Marker key={index} position={marker} />
+            ))}
 
-            {googleLoaded && (
-              <DrawingManager
-                onPolygonComplete={(polygon) => {
-                  const path = polygon
-                    .getPath()
-                    .getArray()
-                    .map((latLng) => ({
-                      lat: latLng.lat(),
-                      lng: latLng.lng(),
-                    }));
+            {/* Dessin des polygones */}
+            <DrawingManager onPolygonComplete={handlePolygonComplete} />
 
-                  const newArea = calculateArea(path);
-                  if (newArea !== null) {
-                    setTotalArea((totalArea ?? 0) + newArea);
-                  }
-                }}
-              />
-            )}
+            {/* Affichage des polygones dessinés */}
+            {polygons.map((polygon, index) => (
+              <Polygon key={index} paths={polygon} />
+            ))}
           </GoogleMap>
         </Wrapper>
 
-        {totalArea !== null && (
-          <Typography variant="body1">
-            Surface du polygone : {(totalArea / 10_000).toFixed(2)} hectares
-          </Typography>
-        )}
+        {/* Champ pour saisir l'adresse */}
+        <Box mt={2}>
+          <TextField
+            fullWidth
+            id="adresse"
+            label="Adresse"
+            placeholder="Entrez l'adresse ici"
+          />
+        </Box>
+
+        {/* Affichage de la surface totale */}
+        <Box mt={2}>
+          <TextField
+            fullWidth
+            id="surface"
+            label="Surface totale (m²)"
+            value={totalArea.toFixed(2)}
+            InputProps={{ readOnly: true }}
+          />
+        </Box>
       </CardContent>
     </Card>
   );
